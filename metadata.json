@@ -1,0 +1,6 @@
+{
+  "name": "SearchOps",
+  "description": "Enterprise-grade SEO Agency Management SaaS application with built-in Gemini-powered recommendation engines, keyword tracking, client campaign analytics, and task checklists under light & dark dynamic themes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
