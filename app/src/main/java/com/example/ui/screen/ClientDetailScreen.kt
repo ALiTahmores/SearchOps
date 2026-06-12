@@ -189,228 +189,445 @@ fun ClientDetailScreen(
 @Composable
 fun KeywordsWorkspace(viewModel: SeoViewModel) {
     val keywords by viewModel.selectedClientKeywords.collectAsState()
+    val isGrounding by viewModel.isGroundingKeyword.collectAsState()
 
     var showForm by remember { mutableStateOf(false) }
+    var entryModeGrounded by remember { mutableStateOf(true) } // default is grounding search!
+    
     var phrase by remember { mutableStateOf("") }
     var vol by remember { mutableStateOf("") }
     var rank by remember { mutableStateOf("") }
     var diff by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "SEO SERP KEYWORD TABLE",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.sp
+                            )
+                            Text(
+                                text = "Track real-time organic rankings using Google AI Grounding",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(
+                            onClick = { showForm = !showForm },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                containerColor = if (showForm) Error.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            )
+                        ) {
+                            Icon(
+                                imageVector = if (showForm) Icons.Default.Close else Icons.Default.Add,
+                                contentDescription = "Toggle add form",
+                                tint = if (showForm) Error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    // Add Keyword Drawer
+                    AnimatedVisibility(
+                        visible = showForm,
+                        enter = expandVertically(tween(300)),
+                        exit = shrinkVertically(tween(300))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Selector for Grounding vs Manual
+                            SegmentedGroundedSelector(
+                                isGrounded = entryModeGrounded,
+                                onModeSelect = { entryModeGrounded = it }
+                            )
+
+                            OutlinedTextField(
+                                value = phrase,
+                                onValueChange = { phrase = it },
+                                placeholder = { Text("Search term, e.g. custom logistics software") },
+                                label = { Text("Keyword Phrase") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("keyword_phrase_input"),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                ),
+                                shape = RoundedCornerShape(10.dp),
+                                singleLine = true
+                            )
+
+                            if (!entryModeGrounded) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = vol,
+                                        onValueChange = { vol = it },
+                                        placeholder = { Text("1500") },
+                                        label = { Text("Volume") },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("keyword_volume_input"),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = rank,
+                                        onValueChange = { rank = it },
+                                        placeholder = { Text("12") },
+                                        label = { Text("Current Rank") },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("keyword_rank_input"),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        singleLine = true
+                                    )
+                                    OutlinedTextField(
+                                        value = diff,
+                                        onValueChange = { diff = it },
+                                        placeholder = { Text("55") },
+                                        label = { Text("Difficulty %") },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("keyword_difficulty_input"),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                        ),
+                                        shape = RoundedCornerShape(10.dp),
+                                        singleLine = true
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (phrase.isNotBlank()) {
+                                        if (entryModeGrounded) {
+                                            viewModel.addKeywordWithGrounding(phrase)
+                                        } else {
+                                            val volumeNum = vol.toIntOrNull() ?: 500
+                                            val rankNum = rank.toIntOrNull() ?: 99
+                                            val diffNum = diff.toIntOrNull() ?: 50
+                                            viewModel.addKeyword(phrase, volumeNum, rankNum, diffNum)
+                                        }
+                                        phrase = ""
+                                        vol = ""
+                                        rank = ""
+                                        diff = ""
+                                        showForm = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (entryModeGrounded) Success else MaterialTheme.colorScheme.primary
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("submit_keyword_button"),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (entryModeGrounded) {
+                                        Icon(imageVector = Icons.Default.Search, contentDescription = "Grounding", modifier = Modifier.size(18.dp))
+                                        Text("ANALYZE & TRACK VIA LIVE GOOGLE SEARCH", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    } else {
+                                        Text("SAVE STATIC MONITOR KEYWORD", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Keyword Table
+            if (keywords.isEmpty()) {
+                EmptyPlaceholder(
+                    title = "No Tracked Keywords",
+                    description = "Add target optimization phrases. Use Live Search Grounding to automatically retrieve keyword volume and ranking metrics straight from current Google results.",
+                    buttonText = "Add First Keyword",
+                    onButtonClick = { showForm = true }
+                )
+            } else {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .padding(vertical = 10.dp, horizontal = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
-                        Text(
-                            text = "SERP KEYWORD MONITOR",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.sp
-                        )
-                        Text(
-                            text = "Track ranking performance on Google SERPs",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    IconButton(
-                        onClick = { showForm = !showForm },
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = if (showForm) Error.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                        )
-                    ) {
-                        Icon(
-                            imageVector = if (showForm) Icons.Default.Close else Icons.Default.Add,
-                            contentDescription = "Toggle add form",
-                            tint = if (showForm) Error else MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Text("PHRASE", modifier = Modifier.weight(1.3f), fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("GOOGLE RANK", modifier = Modifier.weight(1.0f), fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("EST. VOLUME", modifier = Modifier.weight(0.9f), fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("DIFFICULTY", modifier = Modifier.weight(0.8f), fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("ACTIONS", modifier = Modifier.weight(0.7f), fontWeight = FontWeight.Black, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                 }
 
-                // Add Keyword Inline Drawer
-                AnimatedVisibility(
-                    visible = showForm,
-                    enter = expandVertically(tween(300)),
-                    exit = shrinkVertically(tween(300))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = phrase,
-                            onValueChange = { phrase = it },
-                            placeholder = { Text("Metric phrase, e.g. logistics tracking solution") },
-                            label = { Text("Keyword Phrase") },
+                    items(keywords, key = { it.id }) { kw ->
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("keyword_phrase_input"),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            shape = RoundedCornerShape(10.dp),
-                            singleLine = true
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = vol,
-                                onValueChange = { vol = it },
-                                placeholder = { Text("1500") },
-                                label = { Text("Volume") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("keyword_volume_input"),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = rank,
-                                onValueChange = { rank = it },
-                                placeholder = { Text("12") },
-                                label = { Text("Current Rank") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("keyword_rank_input"),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                singleLine = true
-                            )
-                            OutlinedTextField(
-                                value = diff,
-                                onValueChange = { diff = it },
-                                placeholder = { Text("55") },
-                                label = { Text("Difficulty %") },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("keyword_difficulty_input"),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                ),
-                                shape = RoundedCornerShape(10.dp),
-                                singleLine = true
-                            )
-                        }
-                        Button(
-                            onClick = {
-                                if (phrase.isNotBlank()) {
-                                    val volumeNum = vol.toIntOrNull() ?: 500
-                                    val rankNum = rank.toIntOrNull() ?: 99
-                                    val diffNum = diff.toIntOrNull() ?: 50
-                                    viewModel.addKeyword(phrase, volumeNum, rankNum, diffNum)
-                                    phrase = ""
-                                    vol = ""
-                                    rank = ""
-                                    diff = ""
-                                    showForm = false
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("submit_keyword_button"),
-                            shape = RoundedCornerShape(10.dp)
+                                .testTag("keyword_item_${kw.id}"),
+                            shape = RoundedCornerShape(0.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
                         ) {
-                            Text("SAVE MONITOR KEYWORD", color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp, horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // Phrase cell
+                                Column(modifier = Modifier.weight(1.3f)) {
+                                    Text(
+                                        text = kw.phrase,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = "Search Grounded",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Normal
+                                    )
+                                }
+
+                                // Google rank cell
+                                Row(
+                                    modifier = Modifier.weight(1.0f),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    KeywordRankChangeIndicator(
+                                        current = kw.currentRank,
+                                        change = kw.rankChange
+                                    )
+                                }
+
+                                // Volume cell
+                                Text(
+                                    text = if (kw.searchVolume > 0) String.format("%,d", kw.searchVolume) else "N/A",
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.weight(0.9f)
+                                )
+
+                                // Difficulty cell
+                                Box(
+                                    modifier = Modifier.weight(0.8f),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    val color = if (kw.difficulty > 70) Error else if (kw.difficulty > 40) Warning else Success
+                                    Text(
+                                        text = "${kw.difficulty}%",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = color
+                                    )
+                                }
+
+                                // Actions cell
+                                Row(
+                                    modifier = Modifier.weight(0.7f),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    IconButton(
+                                        onClick = { viewModel.refreshKeywordWithGrounding(kw) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Refresh,
+                                            contentDescription = "Refresh live check",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    IconButton(
+                                        onClick = { viewModel.removeKeyword(kw) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteOutline,
+                                            contentDescription = "Delete Keyword",
+                                            tint = Error,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
             }
         }
 
-        // Keywords list
-        if (keywords.isEmpty()) {
-            EmptyPlaceholder(
-                title = "No Tracked Keywords",
-                description = "Click '+' top-right to register primary search keywords for this domain campaign.",
-                buttonText = "Add Keyword Phrase",
-                onButtonClick = { showForm = true }
-            )
-        } else {
-            LazyColumn(
+        // Live Grounding Agent Loading Overlay
+        if (isGrounding) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .background(Color.Black.copy(alpha = 0.7f))
+                    .clickable(enabled = false) {}, // absorb clicks to prevent any double interact
+                contentAlignment = Alignment.Center
             ) {
-                items(keywords, key = { it.id }) { kw ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("keyword_item_${kw.id}"),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1.3f)) {
-                                Text(
-                                    text = kw.phrase,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(text = "Vol: ${kw.searchVolume}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "Difficulty: ${kw.difficulty}%",
-                                        fontSize = 11.sp,
-                                        color = if (kw.difficulty > 70) Error else if (kw.difficulty > 40) Warning else Success
-                                    )
-                                }
-                            }
-                            // Rank pill with trend indicators
-                            KeywordRankChangeIndicator(
-                                current = kw.currentRank,
-                                change = kw.rankChange,
-                                modifier = Modifier.weight(0.7f)
+                        CircularProgressIndicator(
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 4.dp,
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Text(
+                            text = "INITIALIZING REAL-TIME SEARCH AGENT",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                letterSpacing = 1.sp
                             )
-                            IconButton(onClick = { viewModel.removeKeyword(kw) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Delete Keyword",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
+                        )
+                        Text(
+                            text = "Our search grounding AI is performing live Google queries, indexing target keyword configurations, analyzing organic search listings, and matching domain visibility data. This takes standard crawler indexation time.",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                lineHeight = 16.sp
+                            )
+                        )
                     }
                 }
-                item {
-                    Spacer(modifier = Modifier.height(24.dp))
-                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SegmentedGroundedSelector(
+    isGrounded: Boolean,
+    onModeSelect: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(2.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (isGrounded) Success.copy(alpha = 0.15f) else Color.Transparent)
+                .clickable { onModeSelect(true) }
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = if (isGrounded) Success else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "AI Search Grounding",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isGrounded) Success else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .clip(RoundedCornerShape(6.dp))
+                .background(if (!isGrounded) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent)
+                .clickable { onModeSelect(false) }
+                .padding(vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = if (!isGrounded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "Manual Input",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (!isGrounded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

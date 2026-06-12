@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/searchops_logo_dark"
+        android:drawable="@drawable/searchops_logo_icon"
         android:gravity="center" />
 </layer-list>

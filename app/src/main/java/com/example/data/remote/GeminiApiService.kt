@@ -15,10 +15,27 @@ import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
 @JsonClass(generateAdapter = true)
+data class DynamicRetrievalConfig(
+    @Json(name = "mode") val mode: String = "MODE_DYNAMIC",
+    @Json(name = "dynamicThreshold") val dynamicThreshold: Float = 0.3f
+)
+
+@JsonClass(generateAdapter = true)
+data class GoogleSearchRetrieval(
+    @Json(name = "dynamicRetrievalConfig") val dynamicRetrievalConfig: DynamicRetrievalConfig? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class Tool(
+    @Json(name = "googleSearchRetrieval") val googleSearchRetrieval: GoogleSearchRetrieval? = null
+)
+
+@JsonClass(generateAdapter = true)
 data class GenerateContentRequest(
     @Json(name = "contents") val contents: List<Content>,
     @Json(name = "generationConfig") val generationConfig: GenerationConfig? = null,
-    @Json(name = "systemInstruction") val systemInstruction: Content? = null
+    @Json(name = "systemInstruction") val systemInstruction: Content? = null,
+    @Json(name = "tools") val tools: List<Tool>? = null
 )
 
 @JsonClass(generateAdapter = true)

@@ -74,3 +74,45 @@ data class ChatHistory(
     val response: String,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "crawled_pages")
+data class CrawledPage(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val clientId: Int,
+    val url: String,
+    val title: String?,
+    val metaDescription: String?,
+    val headingsH1: String? = "",
+    val headingsH2: String? = "",
+    val headingsH3: String? = "",
+    val headingsH4: String? = "",
+    val headingsH5: String? = "",
+    val headingsH6: String? = "",
+    val statusCode: Int = 200,
+    val loadTimeMs: Long = 0,
+    val wordCount: Int = 0,
+    val missingAltCount: Int = 0,
+    val totalImages: Int = 0,
+    val isSecure: Boolean = true,
+    val canonicalUrl: String? = "",
+    val indexable: Boolean = true,
+    val hasSchema: Boolean = false,
+    val internalLinksCount: Int = 0,
+    val externalLinksCount: Int = 0,
+    val brokenLinksCount: Int = 0
+)
+
+@Entity(tableName = "competitors")
+data class Competitor(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val clientId: Int,
+    val domain: String,
+    val title: String? = "",
+    val metaDesc: String? = "",
+    val h1: String? = "",
+    val h2Count: Int = 0,
+    val schemaCount: Int = 0,
+    val internalLinksCount: Int = 0,
+    val isSecure: Boolean = true,
+    val score: Int = 0
+)

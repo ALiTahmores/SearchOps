@@ -22,7 +22,7 @@ class GreetingScreenshotTest {
 
   @Test
   fun greeting_screenshot() {
-    composeTestRule.setContent { MyApplicationTheme { Text("SEOPulse Agency Suite") } }
+    composeTestRule.setContent { MyApplicationTheme { Text("SearchOps Enterprise Hub") } }
 
     composeTestRule.onRoot().captureRoboImage(filePath = "src/test/screenshots/greeting.png")
   }

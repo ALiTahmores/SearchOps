@@ -41,8 +41,8 @@ fun SplashScreen(
         // Wait on-screen for branding recognition
         delay(1200)
         
-        // Dispatch next route
-        val nextRoute = if (isLoggedIn) "main_container" else "welcome"
+        // Dispatch next route directly to main container (no authentication required)
+        val nextRoute = "main_container"
         onNavigateNext(nextRoute)
     }
 

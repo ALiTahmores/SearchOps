@@ -82,4 +82,45 @@ interface SeoDao {
 
     @Query("DELETE FROM chat_history WHERE clientId = :clientId")
     suspend fun deleteChatHistoryForClient(clientId: Int)
+
+    // --- Crawled Pages ---
+    @Query("SELECT * FROM crawled_pages WHERE clientId = :clientId")
+    fun getCrawledPages(clientId: Int): Flow<List<CrawledPage>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCrawledPage(page: CrawledPage)
+
+    @Query("DELETE FROM crawled_pages WHERE clientId = :clientId")
+    suspend fun deleteCrawledPagesForClient(clientId: Int)
+
+    // --- Competitors ---
+    @Query("SELECT * FROM competitors WHERE clientId = :clientId")
+    fun getCompetitors(clientId: Int): Flow<List<Competitor>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCompetitor(competitor: Competitor)
+
+    @Query("DELETE FROM competitors WHERE clientId = :clientId")
+    suspend fun deleteCompetitorsForClient(clientId: Int)
+
+    @Query("DELETE FROM clients")
+    suspend fun deleteAllClients()
+
+    @Query("DELETE FROM keywords")
+    suspend fun deleteAllKeywords()
+
+    @Query("DELETE FROM tasks")
+    suspend fun deleteAllTasks()
+
+    @Query("DELETE FROM audits")
+    suspend fun deleteAllAudits()
+
+    @Query("DELETE FROM chat_history")
+    suspend fun deleteAllChatHistory()
+
+    @Query("DELETE FROM crawled_pages")
+    suspend fun deleteAllCrawledPages()
+
+    @Query("DELETE FROM competitors")
+    suspend fun deleteAllCompetitors()
 }

@@ -7,6 +7,8 @@ import com.example.data.local.AppDatabase
 import com.example.data.model.*
 import com.example.data.repository.AuthRepository
 import com.example.data.repository.SeoRepository
+import com.example.data.remote.ContentAuditEngine
+import com.example.data.remote.WebsiteContentAuditReport
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -166,6 +168,77 @@ class SeoViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val selectedClientCrawledPages: StateFlow<List<CrawledPage>> = _selectedClientId
+        .flatMapLatest { id ->
+            if (id != null) repository.getCrawledPages(id) else flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val selectedClientContentAuditReport: StateFlow<WebsiteContentAuditReport?> = combine(
+        selectedClientCrawledPages,
+        selectedClientKeywords,
+        _selectedClientId
+    ) { pages, keywords, id ->
+        if (id != null && pages.isNotEmpty()) {
+            ContentAuditEngine.analyze(id, pages, keywords)
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val selectedClientLinkingAnalysis: StateFlow<InternalLinkingAnalysis?> = combine(
+        selectedClientCrawledPages,
+        selectedClient,
+        _selectedClientId
+    ) { pages, client, id ->
+        if (id != null && client != null && pages.isNotEmpty()) {
+            InternalLinkingAnalyzer.analyze(id, pages, client.websiteUrl)
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val selectedClientIndexabilityReport: StateFlow<IndexabilityReport?> = combine(
+        selectedClientCrawledPages,
+        selectedClient,
+        _selectedClientId
+    ) { pages, client, id ->
+        if (id != null && client != null && pages.isNotEmpty()) {
+            IndexabilityAnalyzer.analyze(id, pages, client.websiteUrl)
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val selectedClientOpportunityReport: StateFlow<OpportunityReport?> = combine(
+        selectedClientCrawledPages,
+        _selectedClientId
+    ) { pages, id ->
+        if (id != null && pages.isNotEmpty()) {
+            OpportunityAnalyzer.analyze(id, pages)
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val selectedClientRoadmap: StateFlow<ActionCenterRoadmap?> = combine(
+        selectedClientCrawledPages,
+        selectedClientAudit,
+        _selectedClientId
+    ) { pages, audit, id ->
+        if (id != null) {
+            ActionCenterRoadmapAnalyzer.analyze(id, pages, audit)
+        } else {
+            null
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val selectedClientCompetitors: StateFlow<List<Competitor>> = _selectedClientId
+        .flatMapLatest { id ->
+            if (id != null) repository.getCompetitors(id) else flowOf(emptyList())
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     // --- Global Stats ---
     val globalStats: StateFlow<GlobalStats> = clients.combine(repository.seoDao.getAllTasks()) { clientList, allTasks ->
         val totalClients = clientList.size
@@ -205,6 +278,7 @@ class SeoViewModel(
 
     fun selectClient(clientId: Int) {
         _selectedClientId.value = clientId
+        fetchGoogleReportsForClient(clientId)
     }
 
     fun clearError() {
@@ -253,6 +327,9 @@ class SeoViewModel(
     }
 
     // --- Keyword Operations ---
+    private val _isGroundingKeyword = MutableStateFlow(false)
+    val isGroundingKeyword: StateFlow<Boolean> = _isGroundingKeyword.asStateFlow()
+
     fun addKeyword(phrase: String, searchVolume: Int, currentRank: Int, difficulty: Int) {
         val id = _selectedClientId.value ?: return
         viewModelScope.launch {
@@ -268,6 +345,36 @@ class SeoViewModel(
                 repository.insertKeyword(keyword)
             } catch (e: Exception) {
                 _errorMessage.value = "Failed to add keyword: ${e.message}"
+            }
+        }
+    }
+
+    fun addKeywordWithGrounding(phrase: String) {
+        val id = _selectedClientId.value ?: return
+        viewModelScope.launch {
+            _isGroundingKeyword.value = true
+            try {
+                repository.performKeywordSearchGrounding(id, phrase)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to run search grounding for keyword: ${e.message}"
+            } finally {
+                _isGroundingKeyword.value = false
+            }
+        }
+    }
+
+    fun refreshKeywordWithGrounding(keyword: Keyword) {
+        val id = _selectedClientId.value ?: return
+        viewModelScope.launch {
+            _isGroundingKeyword.value = true
+            try {
+                // Delete the old keyword entry and run grounding to search and fetch updated rank and volume
+                repository.deleteKeyword(keyword)
+                repository.performKeywordSearchGrounding(id, keyword.phrase)
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to refresh keyword ranking: ${e.message}"
+            } finally {
+                _isGroundingKeyword.value = false
             }
         }
     }
@@ -329,9 +436,36 @@ class SeoViewModel(
     private val _ga4PropertyConfigurationId = MutableStateFlow<String>(prefs.getString("ga4_property_id", "properties/395641042") ?: "properties/395641042")
     val ga4PropertyConfigurationId: StateFlow<String> = _ga4PropertyConfigurationId.asStateFlow()
 
+    private val _pagespeedApiKey = MutableStateFlow(prefs.getString("pagespeed_api_key", "") ?: "")
+    val pagespeedApiKey: StateFlow<String> = _pagespeedApiKey.asStateFlow()
+
+    private val _currentGscReport = MutableStateFlow<com.example.data.remote.GscReport?>(null)
+    val currentGscReport: StateFlow<com.example.data.remote.GscReport?> = _currentGscReport.asStateFlow()
+
+    private val _currentGa4Report = MutableStateFlow<com.example.data.remote.Ga4Report?>(null)
+    val currentGa4Report: StateFlow<com.example.data.remote.Ga4Report?> = _currentGa4Report.asStateFlow()
+
+    private val _isFetchingGoogleReports = MutableStateFlow(false)
+    val isFetchingGoogleReports: StateFlow<Boolean> = _isFetchingGoogleReports.asStateFlow()
+
+    private val _verifiedSites = MutableStateFlow<List<com.example.data.remote.GscSiteItem>>(emptyList())
+    val verifiedSites: StateFlow<List<com.example.data.remote.GscSiteItem>> = _verifiedSites.asStateFlow()
+
+    private val _sitemapsList = MutableStateFlow<List<com.example.data.remote.GscSitemapItem>>(emptyList())
+    val sitemapsList: StateFlow<List<com.example.data.remote.GscSitemapItem>> = _sitemapsList.asStateFlow()
+
+    private val _urlInspectionResult = MutableStateFlow<com.example.data.remote.UrlInspectionReport?>(null)
+    val urlInspectionResult: StateFlow<com.example.data.remote.UrlInspectionReport?> = _urlInspectionResult.asStateFlow()
+
+    private val _isInspectingUrl = MutableStateFlow(false)
+    val isInspectingUrl: StateFlow<Boolean> = _isInspectingUrl.asStateFlow()
+
     fun saveGoogleAccessToken(token: String?) {
         prefs.edit().putString("google_access_token", token).apply()
         _googleAccessToken.value = token
+        if (token != null) {
+            fetchGscVerifiedSites()
+        }
     }
 
     fun saveGa4PropertyId(propertyId: String) {
@@ -339,16 +473,139 @@ class SeoViewModel(
         _ga4PropertyConfigurationId.value = propertyId
     }
 
+    fun savePagespeedApiKey(key: String) {
+        prefs.edit().putString("pagespeed_api_key", key).apply()
+        _pagespeedApiKey.value = key
+    }
+
+    fun fetchGoogleReportsForClient(clientId: Int) {
+        viewModelScope.launch {
+            _isFetchingGoogleReports.value = true
+            try {
+                val client = repository.seoDao.getClientById(clientId)
+                val token = _googleAccessToken.value
+                if (client != null && !token.isNullOrEmpty()) {
+                    val siteUrl = if (!client.gscSiteUrl.isNullOrEmpty()) client.gscSiteUrl else client.websiteUrl
+                    val ga4Id = if (!client.ga4PropertyId.isNullOrEmpty()) client.ga4PropertyId else _ga4PropertyConfigurationId.value
+                    
+                    try {
+                        val gsc = com.example.data.remote.SeoIntegrationService.fetchSearchConsoleReport(siteUrl, token)
+                        _currentGscReport.value = gsc
+                    } catch (e: Exception) {
+                        android.util.Log.e("SeoViewModel", "GSC report fetch fail: ${e.message}")
+                    }
+
+                    try {
+                        val ga4 = com.example.data.remote.SeoIntegrationService.fetchAnalyticsReport(ga4Id, token)
+                        _currentGa4Report.value = ga4
+                    } catch (e: Exception) {
+                        android.util.Log.e("SeoViewModel", "GA4 report fetch fail: ${e.message}")
+                    }
+
+                    fetchGscSitemaps(clientId, siteUrl)
+                } else {
+                    _currentGscReport.value = null
+                    _currentGa4Report.value = null
+                    _sitemapsList.value = emptyList()
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SeoViewModel", "Main report fetch fail: ${e.message}")
+            } finally {
+                _isFetchingGoogleReports.value = false
+            }
+        }
+    }
+
+    fun fetchGscVerifiedSites() {
+        val token = _googleAccessToken.value ?: return
+        viewModelScope.launch {
+            try {
+                val sites = com.example.data.remote.SeoIntegrationService.fetchVerifiedSites(token)
+                _verifiedSites.value = sites
+            } catch (e: Exception) {
+                android.util.Log.e("SeoViewModel", "Fetch sites failed", e)
+            }
+        }
+    }
+
+    fun fetchGscSitemaps(clientId: Int, siteUrl: String) {
+        val token = _googleAccessToken.value ?: return
+        viewModelScope.launch {
+            try {
+                val list = com.example.data.remote.SeoIntegrationService.fetchSitemaps(siteUrl, token)
+                _sitemapsList.value = list
+            } catch (e: Exception) {
+                android.util.Log.e("SeoViewModel", "Fetch sitemaps failed", e)
+            }
+        }
+    }
+
+    fun submitGscSitemap(siteUrl: String, sitemapPath: String, onDone: (Boolean) -> Unit) {
+        val token = _googleAccessToken.value ?: return
+        viewModelScope.launch {
+            try {
+                val isOk = com.example.data.remote.SeoIntegrationService.submitSitemap(siteUrl, sitemapPath, token)
+                if (isOk && _selectedClientId.value != null) {
+                    fetchGscSitemaps(_selectedClientId.value!!, siteUrl)
+                }
+                onDone(isOk)
+            } catch (e: Exception) {
+                android.util.Log.e("SeoViewModel", "Sitemap submission error", e)
+                onDone(false)
+            }
+        }
+    }
+
+    fun inspectUrlWithGsc(inspectionUrl: String, siteUrl: String) {
+        val token = _googleAccessToken.value ?: return
+        viewModelScope.launch {
+            _isInspectingUrl.value = true
+            _urlInspectionResult.value = null
+            try {
+                val res = com.example.data.remote.SeoIntegrationService.fetchUrlInspection(inspectionUrl, siteUrl, token)
+                _urlInspectionResult.value = res
+            } catch (e: Exception) {
+                android.util.Log.e("SeoViewModel", "Inspection fail: ${e.message}")
+            } finally {
+                _isInspectingUrl.value = false
+            }
+        }
+    }
+
     // --- Technical Crawl Site Audit ---
     fun runTechnicalAudit(clientId: Int, strategy: String = "MOBILE") {
         viewModelScope.launch {
             _isAuditing.value = true
             try {
-                repository.performSeoAudit(clientId, strategy)
+                repository.performSeoAudit(clientId, strategy, _pagespeedApiKey.value)
             } catch (e: Exception) {
                 _errorMessage.value = "Audit Engine Failure: ${e.message}"
             } finally {
                 _isAuditing.value = false
+            }
+        }
+    }
+
+    // --- Competitor Analysis Scrapers ---
+    fun runCompetitorAnalysis(clientId: Int, domain: String) {
+        viewModelScope.launch {
+            try {
+                val crawl = com.example.data.remote.SeoIntegrationService.crawlUrl(domain)
+                val comp = Competitor(
+                    clientId = clientId,
+                    domain = domain,
+                    title = crawl.title,
+                    metaDesc = crawl.metaDescription,
+                    h1 = crawl.h1Tags.firstOrNull() ?: "مشخص نشده",
+                    h2Count = crawl.h2Tags.size,
+                    schemaCount = crawl.structuredDataCount,
+                    internalLinksCount = crawl.discoveredUrls.size,
+                    isSecure = domain.startsWith("https") || domain.contains("https://"),
+                    score = crawl.calculatedScore
+                )
+                repository.insertCompetitor(comp)
+            } catch (e: Exception) {
+                _errorMessage.value = "خطا در خزش رقیب: ${e.localizedMessage}"
             }
         }
     }
@@ -390,6 +647,18 @@ class SeoViewModel(
                 _errorMessage.value = "AI Engine Timeout: ${e.message}"
             } finally {
                 _isChatLoading.value = false
+            }
+        }
+    }
+
+    fun clearAllAnalysisData(onComplete: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                repository.clearAllData()
+                _selectedClientId.value = null
+                onComplete()
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to clear analysis data: ${e.message}"
             }
         }
     }

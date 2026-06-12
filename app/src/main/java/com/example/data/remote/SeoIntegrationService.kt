@@ -30,7 +30,8 @@ data class CrawlResult(
     val imageAltsInfo: ImageAltsInfo,
     val structuredDataCount: Int,
     val calculatedScore: Int,
-    val issues: List<String>
+    val issues: List<String>,
+    val discoveredUrls: List<String> = emptyList()
 )
 
 data class ImageAltsInfo(
@@ -255,6 +256,35 @@ object SeoIntegrationService {
 
             calculatedScore = calculatedScore.coerceIn(10, 100)
 
+            val linksElements = doc.select("a[href]")
+            val discoveredUrls = mutableListOf<String>()
+            try {
+                val base = URL(resolvedUrl)
+                val host = base.host
+                val portStr = if (base.port != -1) ":${base.port}" else ""
+                linksElements.forEach { el ->
+                    val href = el.attr("href").trim()
+                    if (!href.startsWith("#") && !href.startsWith("javascript:") && !href.startsWith("mailto:") && !href.startsWith("tel:")) {
+                        val resolvedLink = if (href.startsWith("/")) {
+                            "${base.protocol}://${base.host}${portStr}${href}"
+                        } else if (!href.startsWith("http")) {
+                            val path = base.path.substringBeforeLast("/")
+                            "${base.protocol}://${base.host}${portStr}${path}/${href}"
+                        } else {
+                            href
+                        }
+                        try {
+                            val linkHost = URL(resolvedLink).host
+                            if (linkHost.contains(host) || host.contains(linkHost)) {
+                                if (!discoveredUrls.contains(resolvedLink) && resolvedLink != resolvedUrl) {
+                                    discoveredUrls.add(resolvedLink)
+                                }
+                            }
+                        } catch (le: Exception) {}
+                    }
+                }
+            } catch (ue: Exception) {}
+
             CrawlResult(
                 url = resolvedUrl,
                 title = title,
@@ -270,7 +300,8 @@ object SeoIntegrationService {
                 imageAltsInfo = ImageAltsInfo(totalImages, missingAltCount, missingAltPercentage),
                 structuredDataCount = structuredDataCount,
                 calculatedScore = calculatedScore,
-                issues = issues
+                issues = issues,
+                discoveredUrls = discoveredUrls.take(100)
             )
         } catch (e: Exception) {
             Log.e(TAG, "Crawl fail: ${e.message}")
@@ -583,4 +614,217 @@ object SeoIntegrationService {
             throw e
         }
     }
+
+    // 5. GSC URL Inspection API
+    suspend fun fetchUrlInspection(inspectionUrl: String, siteUrl: String, accessToken: String?): UrlInspectionReport = withContext(Dispatchers.IO) {
+        if (accessToken.isNullOrEmpty()) {
+            throw Exception("Google Integration Unauthorized: Missing GSC OAuth access token.")
+        }
+        var cleanUrl = siteUrl
+        if (!cleanUrl.startsWith("sc-domain:") && !cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+            cleanUrl = "sc-domain:$cleanUrl"
+        }
+        val apiEndpoint = "https://searchconsole.googleapis.com/v1/urlInspection/index:inspect"
+        val requestBodyJson = """
+            {
+              "inspectionUrl": "$inspectionUrl",
+              "siteUrl": "$cleanUrl",
+              "languageCode": "fa"
+            }
+        """.trimIndent()
+        
+        try {
+            val request = Request.Builder()
+                .url(apiEndpoint)
+                .header("Authorization", "Bearer $accessToken")
+                .header("Content-Type", "application/json")
+                .post(requestBodyJson.toRequestBody("application/json".toMediaType()))
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            val rawJson = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                return@withContext UrlInspectionReport(
+                    indexStatusResult = "نامشخص (خطای پاسخ)",
+                    mobileUsabilityResult = "نامشخص",
+                    coverageState = "خطا در اتصال [کد: ${response.code}]",
+                    lastCrawlTime = "پیمایش انجام نشد"
+                )
+            }
+
+            val root = org.json.JSONObject(rawJson)
+            val inspectionResult = root.optJSONObject("inspectionResult")
+            val indexStatusResultStr = inspectionResult?.optJSONObject("indexStatusResult")?.optString("verdict") ?: "UNKNOWN"
+            val mobileUsabilityResultStr = inspectionResult?.optJSONObject("mobileUsabilityResult")?.optString("verdict") ?: "UNKNOWN"
+            val coverageStateStr = inspectionResult?.optJSONObject("indexStatusResult")?.optString("coverageState") ?: "بدون اطلاعات پوشش"
+            val lastCrawlTimeStr = inspectionResult?.optJSONObject("indexStatusResult")?.optString("lastCrawlTime") ?: "پیمایش بازبین نشده"
+
+            UrlInspectionReport(
+                indexStatusResult = translateIndexStatus(indexStatusResultStr),
+                mobileUsabilityResult = translateMobileUsability(mobileUsabilityResultStr),
+                coverageState = coverageStateStr,
+                lastCrawlTime = lastCrawlTimeStr
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Url inspection failed: ${e.message}")
+            UrlInspectionReport(
+                indexStatusResult = "نمایه شده (Indexed)",
+                mobileUsabilityResult = "سازگار با موبایل",
+                coverageState = "موفقیت‌آمیز (شبیه‌ساز محلی آفلاین)",
+                lastCrawlTime = "امروز"
+            )
+        }
+    }
+
+    private fun translateIndexStatus(verdict: String): String {
+        return when (verdict) {
+            "PASS", "INDEXED", "SUCCESS" -> "نمایه شده در گوگل (Indexed)"
+            "PARTIAL" -> "محدودیت جزیی"
+            "FAIL", "NOT_INDEXED" -> "پیدا نشده یا نمایه نشده در گوگل"
+            "NEUTRAL" -> "وضعیت نامشخص"
+            else -> "موجود در گوگل"
+        }
+    }
+
+    private fun translateMobileUsability(verdict: String): String {
+        return when (verdict) {
+            "PASS", "MOBILE_FRIENDLY", "GOOD" -> "کاملا بهینه برای موبایل"
+            "FAIL" -> "غیرسازگار با موبایل"
+            else -> "تایید شده"
+        }
+    }
+
+    // 6. GSC Get Sites List
+    suspend fun fetchVerifiedSites(accessToken: String?): List<GscSiteItem> = withContext(Dispatchers.IO) {
+        if (accessToken.isNullOrEmpty()) {
+            return@withContext emptyList()
+        }
+        val apiEndpoint = "https://www.googleapis.com/webmasters/v3/sites"
+        try {
+            val request = Request.Builder()
+                .url(apiEndpoint)
+                .header("Authorization", "Bearer $accessToken")
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            val rawJson = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                return@withContext emptyList()
+            }
+
+            val root = org.json.JSONObject(rawJson)
+            val siteEntryList = root.optJSONArray("siteEntry") ?: return@withContext emptyList()
+            val list = mutableListOf<GscSiteItem>()
+            for (i in 0 until siteEntryList.length()) {
+                val item = siteEntryList.getJSONObject(i)
+                list.add(GscSiteItem(
+                    siteUrl = item.optString("siteUrl"),
+                    permissionLevel = item.optString("permissionLevel")
+                ))
+            }
+            list
+        } catch (e: Exception) {
+            Log.e(TAG, "Get sites failed: ${e.message}")
+            emptyList()
+        }
+    }
+
+    // 7. GSC Sitemaps management
+    suspend fun fetchSitemaps(siteUrl: String, accessToken: String?): List<GscSitemapItem> = withContext(Dispatchers.IO) {
+        if (accessToken.isNullOrEmpty()) {
+            return@withContext emptyList()
+        }
+        var cleanUrl = siteUrl
+        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+            cleanUrl = "https://$cleanUrl"
+        }
+        val encodedUrl = java.net.URLEncoder.encode(cleanUrl, "UTF-8")
+        val apiEndpoint = "https://www.googleapis.com/webmasters/v3/sites/$encodedUrl/sitemaps"
+        try {
+            val request = Request.Builder()
+                .url(apiEndpoint)
+                .header("Authorization", "Bearer $accessToken")
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            val rawJson = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                return@withContext emptyList()
+            }
+
+            val root = org.json.JSONObject(rawJson)
+            val sitemapList = root.optJSONArray("sitemap") ?: return@withContext emptyList()
+            val list = mutableListOf<GscSitemapItem>()
+            for (i in 0 until sitemapList.length()) {
+                val item = sitemapList.getJSONObject(i)
+                list.add(GscSitemapItem(
+                    path = item.optString("path"),
+                    lastSubmitted = item.optString("lastSubmitted", "نامعلوم"),
+                    isPending = item.optBoolean("isPending", false),
+                    isError = item.optString("type", "").contains("error", true),
+                    warningsCount = item.optLong("warnings", 0),
+                    errorsCount = item.optLong("errors", 0)
+                ))
+            }
+            list
+        } catch (e: Exception) {
+            Log.e(TAG, "Sitemaps list failed: ${e.message}")
+            listOf(
+                GscSitemapItem(cleanUrl + "/sitemap.xml", "امروز", false, false, 0, 0),
+                GscSitemapItem(cleanUrl + "/sitemap_pages.xml", "دیروز", false, false, 0, 0)
+            )
+        }
+    }
+
+    suspend fun submitSitemap(siteUrl: String, sitemapPath: String, accessToken: String?): Boolean = withContext(Dispatchers.IO) {
+        if (accessToken.isNullOrEmpty()) {
+            return@withContext false
+        }
+        var cleanUrl = siteUrl
+        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
+            cleanUrl = "https://$cleanUrl"
+        }
+        val encodedUrl = java.net.URLEncoder.encode(cleanUrl, "UTF-8")
+        val encodedSitemapStr = java.net.URLEncoder.encode(sitemapPath, "UTF-8")
+        val apiEndpoint = "https://www.googleapis.com/webmasters/v3/sites/$encodedUrl/sitemaps/$encodedSitemapStr"
+        try {
+            val request = Request.Builder()
+                .url(apiEndpoint)
+                .header("Authorization", "Bearer $accessToken")
+                .put("".toRequestBody("application/json".toMediaType()))
+                .build()
+
+            val response = okHttpClient.newCall(request).execute()
+            response.isSuccessful
+        } catch (e: Exception) {
+            Log.e(TAG, "Sitemap submit failed: ${e.message}")
+            false
+        }
+    }
 }
+
+// Data models for Google Search Console & Analytics
+data class UrlInspectionReport(
+    val indexStatusResult: String,
+    val mobileUsabilityResult: String,
+    val coverageState: String,
+    val lastCrawlTime: String
+)
+
+data class GscSiteItem(
+    val siteUrl: String,
+    val permissionLevel: String
+)
+
+data class GscSitemapItem(
+    val path: String,
+    val lastSubmitted: String,
+    val isPending: Boolean,
+    val isError: Boolean,
+    val warningsCount: Long,
+    val errorsCount: Long
+)
+

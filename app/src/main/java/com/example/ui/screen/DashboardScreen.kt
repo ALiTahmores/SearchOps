@@ -1,10 +1,11 @@
 package com.example.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,368 +16,347 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.components.CampaignStatusBadge
-import com.example.ui.components.EmptyPlaceholder
+import com.example.BuildConfig
+import com.example.R
 import com.example.ui.components.HealthScoreGauge
-import com.example.ui.theme.*
-import com.example.ui.viewmodel.GlobalStats
 import com.example.ui.viewmodel.SeoViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     viewModel: SeoViewModel,
-    onClientClick: (Int) -> Unit,
-    onAddClientClick: () -> Unit
+    onStartAnalysisClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val clients by viewModel.clients.collectAsState()
-    val globalStats by viewModel.globalStats.collectAsState()
-    var searchKeyword by remember { mutableStateOf("") }
+    val isSeeding by viewModel.isSeeding.collectAsState()
+    val googleAccessToken by viewModel.googleAccessToken.collectAsState()
 
-    val filteredClients = remember(clients, searchKeyword) {
-        if (searchKeyword.isBlank()) clients else {
-            clients.filter {
-                it.name.contains(searchKeyword, ignoreCase = true) ||
-                        it.websiteUrl.contains(searchKeyword, ignoreCase = true)
-            }
-        }
-    }
-
-    Scaffold(
-        topBar = {
-            Box(
+    // Wrap the entire UI under RTL
+    CompositionLocalProvider(androidx.compose.ui.platform.LocalLayoutDirection provides androidx.compose.ui.unit.LayoutDirection.Rtl) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+        ) {
+            // --- Header Bar ---
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "SEOPulse Agency",
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                color = TextPrimary,
-                                fontSize = 26.sp
-                            )
-                        )
-                        Text(
-                            text = "Enterprise SEO Command Center",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = TextSecondary,
-                                fontSize = 14.sp
-                            )
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Image(
+                            painter = painterResource(
+                                id = if (androidx.compose.foundation.isSystemInDarkTheme()) R.drawable.searchops_logo_dark else R.drawable.searchops_logo_light
+                            ),
+                            contentDescription = "SearchOps Logo",
+                            modifier = Modifier.size(24.dp)
                         )
                     }
-                    IconButton(
-                        onClick = { viewModel.seedInitialSandboxData() },
-                        colors = IconButtonDefaults.iconButtonColors(containerColor = CardSurface)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Trigger seed reload",
-                            tint = PrimaryDark
+                    Column {
+                        Text(
+                            text = "داشبورد سئو SearchOps",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Black,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "مرکز کنترل و مانیتورینگ متغیرهای ارگانیک",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onAddClientClick,
-                containerColor = PrimaryDark,
-                contentColor = OnPrimaryDark,
-                modifier = Modifier
-                    .testTag("add_client_fab")
-                    .navigationBarsPadding(),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = "Add Client",
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Global Statistics Dashboard Panel
-            item {
-                GlobalStatsPanel(stats = globalStats)
-            }
 
-            // Search Filter Row
-            item {
-                OutlinedTextField(
-                    value = searchKeyword,
-                    onValueChange = { searchKeyword = it },
-                    placeholder = { Text("Search clients or websites...", color = TextSecondary) },
+            Divider(modifier = Modifier.padding(bottom = 14.dp), color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+
+            if (clients.isEmpty()) {
+                // --- Empty State ---
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("client_search_input"),
-                    leadingIcon = {
+                        .weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.Search,
+                            imageVector = Icons.Default.Analytics,
                             contentDescription = null,
-                            tint = TextSecondary
+                            modifier = Modifier.size(72.dp),
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
                         )
-                    },
-                    trailingIcon = {
-                        if (searchKeyword.isNotEmpty()) {
-                            IconButton(onClick = { searchKeyword = "" }) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear",
-                                    tint = TextSecondary
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "هنوز هیچ سایتی تحلیل نشده است",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "آدرس وب‌سایت خود را وارد کنید تا پارامترهای فنی سئو، ساختار تگ‌ها و لود صفحات خزش و تحلیل شود.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Button(
+                            onClick = onStartAnalysisClick,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.testTag("onboard_empty_btn")
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("شروع تحلیل سایت", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            } else {
+                val latestClient = clients.first()
+                val dateFormat = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault())
+                val formattedTime = dateFormat.format(Date(latestClient.createdAt))
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // --- 1. LATEST ANALYZED SITE CARD ---
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "آخرین دامنه تحلیل شده",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = latestClient.websiteUrl,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = latestClient.name,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                HealthScoreGauge(
+                                    score = latestClient.healthScore,
+                                    size = 64.dp,
+                                    strokeWidth = 5.dp
                                 )
                             }
                         }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PrimaryDark,
-                        unfocusedBorderColor = BorderColor,
-                        focusedContainerColor = CardSurface,
-                        unfocusedContainerColor = CardSurface,
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                )
-            }
+                    }
 
-            // Client Header
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "CAMPAIGNS (${filteredClients.size})",
-                        color = TextPrimary,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
-                    )
-                }
-            }
+                    // --- 2. STATS ROW ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // Stat 1: Total Audits
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Icon(Icons.Default.CloudDone, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("تعداد تحلیل‌ها", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = "${clients.size} وب‌سایت",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
 
-            // List of Client Campaign Cards
-            if (filteredClients.isEmpty()) {
-                item {
-                    EmptyPlaceholder(
-                        title = "No campaigns found",
-                        description = if (searchKeyword.isEmpty()) {
-                            "You haven't onboarded any clients yet. Click '+' bottom-right to create one."
-                        } else {
-                            "No clients match '$searchKeyword'. Try checking the spelling."
-                        },
-                        buttonText = if (searchKeyword.isEmpty()) "Seed Sandbox Data" else null,
-                        onButtonClick = if (searchKeyword.isEmpty()) {
-                            { viewModel.seedInitialSandboxData() }
-                        } else null
-                    )
-                }
-            } else {
-                items(filteredClients, key = { it.id }) { client ->
-                    ClientCampaignCard(
-                        client = client,
-                        onClick = { onClientClick(client.id) }
-                    )
-                }
-            }
+                        // Stat 2: Last Audit Time
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Icon(Icons.Default.AccessTime, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("آخرین زمان تحلیل", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = formattedTime,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
 
-            item {
-                Spacer(modifier = Modifier.height(80.dp)) // Offset height of FAB + padding
+                    // --- 3. API CONNECTIVITY STATUS ---
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "وضعیت اتصال API ها",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(bottom = 12.dp)
+                              )
+
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                val hasGeminiKey = BuildConfig.GEMINI_API_KEY.isNotBlank() && BuildConfig.GEMINI_API_KEY != "MY_GEMINI_API_KEY"
+                                ApiStatusRow(apiName = "هوش مصنوعی گوگل (Gemini API)", status = hasGeminiKey, desc = "تولید توصیه‌های استراتژیک سئو")
+                                ApiStatusRow(apiName = "وب‌سایت پیج‌اسپید (PageSpeed Insights API)", status = true, desc = "بررسی هسته حیاتی وب (Core Web Vitals)")
+                                ApiStatusRow(apiName = "گوگل کانتینر ارتباطات (Google Search Console Oauth)", status = googleAccessToken != null, desc = "دریافت کلمات کلیدی کلیک شده")
+                            }
+                        }
+                    }
+
+                    // --- 4. LATEST AI RECOMMENDATIONS ---
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = "آخرین پیشنهادهای هوش مصنوعی (فارسی)",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    RecommendationBullet(text = "ارتقای تگ‌های عنوان (H1, H2) برای صفحات اصلی وب‌سایت جهت هماهنگی با اهداف کاربر.")
+                                    RecommendationBullet(text = "فشرده‌سازی و بارگذاری تنبل تصاویر به وب‌فرمت مدرن (WebP) جهت بهبود سرعت ترسیم محتوا (LCP).")
+                                    RecommendationBullet(text = "قرار دادن متا تگ‌های توصیفی به طول مناسب جهت افزایش نرخ کلیک خور صفحات در نتایج سرچ.")
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
     }
 }
 
-// --- Global Stats Grid Panel ---
 @Composable
-fun GlobalStatsPanel(stats: GlobalStats) {
-    Card(
+fun ApiStatusRow(apiName: String, status: Boolean, desc: String) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp)),
-        colors = CardDefaults.cardColors(containerColor = CardSurface)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "PORTFOLIO METRICS",
+                text = apiName,
                 fontSize = 11.sp,
-                color = TextSecondary,
                 fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
+                color = MaterialTheme.colorScheme.onSurface
             )
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Large Score Circular Chart representation
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    HealthScoreGauge(score = stats.averageHealthScore, size = 80.dp, strokeWidth = 6.dp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Portfolio Avg",
-                        fontSize = 11.sp,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // Vertical Divider
-                Box(
-                    modifier = Modifier
-                        .height(90.dp)
-                        .width(1.dp)
-                        .background(BorderColor)
-                )
-
-                // Stats Breakdown items
-                Column(
-                    modifier = Modifier
-                        .weight(1.2f)
-                        .padding(start = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    StatMetricRow(
-                        label = "Total Clients",
-                        value = stats.totalClients.toString(),
-                        icon = Icons.Default.BusinessCenter,
-                        color = PrimaryDark
-                    )
-                    StatMetricRow(
-                        label = "Active Campaigns",
-                        value = stats.activeCampaignsCount.toString(),
-                        icon = Icons.Default.Speed,
-                        color = AccentGreen
-                    )
-                    StatMetricRow(
-                        label = "Pending Tasks",
-                        value = stats.pendingTasksCount.toString(),
-                        icon = Icons.Default.TaskAlt,
-                        color = SoftYellow
-                    )
-                }
-            }
+            Text(
+                text = desc,
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
-    }
-}
 
-@Composable
-fun StatMetricRow(label: String, value: String, icon: ImageVector, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
         Box(
             modifier = Modifier
-                .size(28.dp)
-                .background(color.copy(alpha = 0.12f), RoundedCornerShape(6.dp)),
-            contentAlignment = Alignment.Center
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    if (status) com.example.ui.theme.Success.copy(alpha = 0.12f)
+                    else com.example.ui.theme.Warning.copy(alpha = 0.12f)
+                )
+                .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = color,
-                modifier = Modifier.size(16.dp)
+            Text(
+                text = if (status) "فعال" else "آفلاین / متصل نشده",
+                fontSize = 9.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (status) com.example.ui.theme.Success else com.example.ui.theme.Warning
             )
-        }
-        Spacer(modifier = Modifier.width(10.dp))
-        Column {
-            Text(text = value, fontSize = 15.sp, color = TextPrimary, fontWeight = FontWeight.Bold, lineHeight = 16.sp)
-            Text(text = label, fontSize = 11.sp, color = TextSecondary, lineHeight = 12.sp)
         }
     }
 }
 
-// --- Individual Client Campaign card ---
 @Composable
-fun ClientCampaignCard(
-    client: com.example.data.model.Client,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
-            .testTag("client_card_${client.id}"),
-        colors = CardDefaults.cardColors(containerColor = CardSurface)
+fun RecommendationBullet(text: String) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(vertical = 2.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CampaignStatusBadge(status = client.status)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = client.campaignType,
-                        color = PrimaryDark,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp
-                    )
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = client.name,
-                    color = TextPrimary,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = client.websiteUrl,
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            // Simple visual separation
-            Box(
-                modifier = Modifier
-                    .height(60.dp)
-                    .width(1.dp)
-                    .background(BorderColor)
-                    .padding(horizontal = 12.dp)
-            )
-            // Health gauge representing SEO score
-            HealthScoreGauge(
-                score = client.healthScore,
-                size = 64.dp,
-                strokeWidth = 5.dp
-            )
-        }
+        Text("•", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+        Text(text = text, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 16.sp)
     }
 }

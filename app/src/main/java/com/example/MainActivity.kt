@@ -53,30 +53,19 @@ class MainActivity : ComponentActivity() {
 
     private fun initializeFirebaseSafely() {
         try {
-            val app = FirebaseApp.initializeApp(this)
-            if (app != null) {
-                Log.d("MainActivity", "Firebase initialized successfully via default provider resources.")
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                val options = FirebaseOptions.Builder()
+                    .setApplicationId("1:123456789012:android:0123456789abcdef012345")
+                    .setApiKey("MockApiKeyString1234567890abcdefghijklm")
+                    .setProjectId("mock-firebase-project-id")
+                    .build()
+                FirebaseApp.initializeApp(this, options)
+                Log.d("MainActivity", "Firebase initialized successfully via default fallback options.")
             } else {
-                Log.w("MainActivity", "Default Firebase dynamic init unsuccessful (returned null), configuring fallback options.")
-                initializeFallbackFirebase()
+                Log.d("MainActivity", "Firebase is already initialized by the system provider.")
             }
         } catch (e: Exception) {
-            Log.w("MainActivity", "Default Firebase dynamic init unsuccessful (threw exception), configuring fallback options: ${e.localizedMessage}")
-            initializeFallbackFirebase()
-        }
-    }
-
-    private fun initializeFallbackFirebase() {
-        try {
-            val options = FirebaseOptions.Builder()
-                .setApplicationId("1:123456789012:android:0123456789abcdef012345")
-                .setApiKey("MockApiKeyString1234567890abcdefghijklm")
-                .setProjectId("mock-firebase-project-id")
-                .build()
-            FirebaseApp.initializeApp(this, options)
-            Log.i("MainActivity", "Firebase initialized successfully using sandboxed/fallback configurations.")
-        } catch (inner: Exception) {
-            Log.e("MainActivity", "Fatal error during fallback Firebase config injection: ${inner.localizedMessage}", inner)
+            Log.e("MainActivity", "Fatal error during dynamic Firebase config injection: ${e.localizedMessage}", e)
         }
     }
 }
